@@ -4,10 +4,10 @@ import { MonthSwitcher } from '../components/MonthSwitcher.tsx'
 import { TransactionList } from '../components/TransactionList.tsx'
 import { PageHeader } from '../components/ui.tsx'
 import { formatMonthLabel } from '../lib/jalali.ts'
+import { MarketBoard } from '../components/MarketBoard.tsx'
 import { formatNumber } from '../lib/money.ts'
 import { expenseSlices, inMonth, recentDaySeries, totalOf } from '../lib/stats.ts'
 import { useFinance } from '../store/finance.tsx'
-import { HOLDING_KINDS, HOLDING_META } from '../types.ts'
 
 export function DashboardPage() {
   const { state, month } = useFinance()
@@ -27,21 +27,7 @@ export function DashboardPage() {
     <div className="flex flex-col gap-6">
       <PageHeader eyebrow="خلاصه ماه" title="داشبورد" action={<MonthSwitcher />} />
 
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        {HOLDING_KINDS.map((kind) => {
-          const quote = state.quotes.find((item) => item.kind === kind)
-          return (
-            <Link
-              key={kind}
-              to="/assets"
-              className="rounded-2xl border border-line bg-panel px-3 py-3 transition hover:border-gold/50"
-            >
-              <p className="truncate text-xs text-mute">{HOLDING_META[kind].name}</p>
-              <p className="mt-1 truncate text-sm font-bold">{quote ? formatNumber(quote.price) : '—'}</p>
-            </Link>
-          )
-        })}
-      </div>
+      <MarketBoard />
 
       <section className="grid gap-3 md:grid-cols-3">
         <Stat label="درآمد" value={formatNumber(income)} hint="تومان" tone="text-in" bar="bg-in" />
