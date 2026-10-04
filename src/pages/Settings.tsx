@@ -35,7 +35,8 @@ export function SettingsPage() {
     event.target.value = ''
     if (!file) return
     try {
-      replaceAll(parseBackup(await file.text()))
+      const next = parseBackup(await file.text())
+      replaceAll({ ...next, apiKey: state.apiKey })
       setMessage({ tone: 'ok', text: 'داده‌ها وارد شد و جای اطلاعات قبلی را گرفت.' })
     } catch {
       setMessage({ tone: 'err', text: 'این فایل برای Luna قابل خواندن نیست.' })

@@ -85,3 +85,26 @@ export function DailyBars({ days }: { days: DayPoint[] }) {
     </div>
   )
 }
+
+export function MonthlyBars({ points }: { points: DayPoint[] }) {
+  return (
+    <div className="h-64" dir="ltr">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={points} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+          <CartesianGrid vertical={false} stroke="var(--line)" />
+          <XAxis dataKey="label" tick={{ fill: 'var(--mute)', fontSize: 10 }} axisLine={false} tickLine={false} interval={0} />
+          <YAxis
+            tickFormatter={(value) => formatCompact(Number(value))}
+            tick={{ fill: 'var(--mute)', fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+            width={42}
+          />
+          <Tooltip content={ChartTip} cursor={{ fill: 'var(--raise)' }} />
+          <Bar dataKey="income" name="درآمد" fill="var(--in)" radius={[6, 6, 0, 0]} maxBarSize={22} isAnimationActive={false} />
+          <Bar dataKey="expense" name="هزینه" fill="var(--out)" radius={[6, 6, 0, 0]} maxBarSize={22} isAnimationActive={false} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}

@@ -10,6 +10,13 @@ const links = [
   { to: '/settings', label: 'تنظیمات', short: 'تنظیم', end: false, icon: IconGear },
 ]
 
+const extraLinks = [
+  { to: '/accounts', label: 'حساب‌ها' },
+  { to: '/reports', label: 'گزارش' },
+  { to: '/goals', label: 'اهداف' },
+  { to: '/plans', label: 'پرداخت‌های آینده' },
+]
+
 function ThemeToggle({ compact = false }: { compact?: boolean }) {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'))
 
@@ -59,6 +66,12 @@ export function Shell() {
           {links.map((link) => (
             <NavLink key={link.to} to={link.to} end={link.end} className={({ isActive }) => itemClass(isActive)}>
               <link.icon />
+              {link.label}
+            </NavLink>
+          ))}
+          <div className="my-2 border-t border-line" />
+          {extraLinks.map((link) => (
+            <NavLink key={link.to} to={link.to} className={({ isActive }) => itemClass(isActive)}>
               {link.label}
             </NavLink>
           ))}

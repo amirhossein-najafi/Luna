@@ -17,8 +17,8 @@ function DateTick({
   index = 0,
   visibleTicksCount = 1,
 }: {
-  x?: number
-  y?: number
+  x?: string | number
+  y?: string | number
   payload?: { value?: string }
   index?: number
   visibleTicksCount?: number
@@ -77,7 +77,9 @@ export function MarketBoard() {
           next.map((item) => ({
             kind: item.kind,
             price: item.price,
-            updatedAt: new Date().toISOString(),
+            source: 'tgju' as const,
+            fetchedAt: new Date().toISOString(),
+            marketAt: item.points.at(-1)?.iso,
           })),
         )
       } catch {

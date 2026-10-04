@@ -11,6 +11,7 @@ const SYMBOLS: Record<HoldingKind, string> = {
 export type MarketPoint = {
   label: string
   fullDate: string
+  iso: string
   price: number
 }
 
@@ -42,12 +43,14 @@ function parseChangePct(cell: unknown) {
 
 function formatPointDate(jalali: string) {
   const parts = jalali.split('/')
+  const year = parts[0]
   const month = Number(parts[1])
   const day = Number(parts[2])
   const monthName = JALALI_MONTHS[month - 1] ?? parts[1] ?? ''
   return {
     label: toFaDigits(day),
     fullDate: `${toFaDigits(day)} ${monthName}`,
+    iso: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
   }
 }
 
@@ -61,7 +64,7 @@ function parseSeries(kind: HoldingKind, payload: TablePayload): MarketSeries | n
     const jalali = String(row[7] ?? '')
     if (!price || !/^\d{4}\/\d{2}\/\d{2}$/.test(jalali)) continue
     const date = formatPointDate(jalali)
-    points.push({ label: date.label, fullDate: date.fullDate, price })
+    points.push({ label: date.label, fullDate: date.fullDate, iso: date.iso, price })
   }
 
   if (points.length === 0) return null

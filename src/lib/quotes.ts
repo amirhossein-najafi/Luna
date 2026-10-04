@@ -81,7 +81,7 @@ function pickQuotes(rows: Row[]) {
     })
     if (bestIndex < 0) continue
     used.add(bestIndex)
-    quotes.push({ kind, price: bestPrice, updatedAt: new Date().toISOString() })
+    quotes.push({ kind, price: bestPrice, source: 'brsapi', fetchedAt: new Date().toISOString() })
   }
 
   return quotes

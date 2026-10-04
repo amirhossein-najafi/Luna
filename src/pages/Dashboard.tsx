@@ -1,10 +1,15 @@
 import { Link } from 'react-router-dom'
 import { DailyBars, ExpenseDonut } from '../components/Charts.tsx'
+import { MarketBoard } from '../components/MarketBoard.tsx'
 import { MonthSwitcher } from '../components/MonthSwitcher.tsx'
+import { NetWorthChart } from '../components/NetWorthChart.tsx'
 import { TransactionList } from '../components/TransactionList.tsx'
 import { PageHeader } from '../components/ui.tsx'
-import { formatMonthLabel } from '../lib/jalali.ts'
-import { MarketBoard } from '../components/MarketBoard.tsx'
+import { cashPosition } from '../domain/ledger.ts'
+import { monthInsights, savingsRate } from '../domain/insights.ts'
+import { remainingCommitments, upcomingRules } from '../domain/recurring.ts'
+import { netWorth } from '../domain/wealth.ts'
+import { formatDayLabel, formatMonthLabel, todayJalali } from '../lib/jalali.ts'
 import { formatNumber } from '../lib/money.ts'
 import { expenseSlices, inMonth, recentDaySeries, totalOf } from '../lib/stats.ts'
 import { useFinance } from '../store/finance.tsx'
@@ -15,6 +20,13 @@ export function DashboardPage() {
   const income = totalOf(rows, 'income')
   const expense = totalOf(rows, 'expense')
   const balance = income - expense
+  const rate = savingsRate(income, expense)
+  const today = todayJalali()
+  const insights = monthInsights(state.transactions, month, today)
+  const liquid = cashPosition(state.accounts, state.transactions).liquid
+  const worth = netWorth(state.accounts, state.transactions, state.lots, state.quotes)
+  const commitments = remainingCommitments(state.recurring, month, today)
+  const upcoming = upcomingRules(state.recurring, today).slice(0, 3)
   const slices = expenseSlices(rows)
   const days = recentDaySeries(rows, month)
   const top = slices.reduce<(typeof slices)[number] | null>((best, slice) => {
@@ -27,6 +39,29 @@ export function DashboardPage() {
     <div className="flex flex-col gap-6">
       <PageHeader eyebrow="خلاصه ماه" title="داشبورد" action={<MonthSwitcher />} />
 
+      {insights.length > 0 ? (
+        <ul className="flex flex-col gap-2 rounded-3xl border border-line bg-panel px-5 py-4 text-sm">
+          {insights.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <section className="grid gap-3 md:grid-cols-2">
+        <article className="rounded-3xl border border-line bg-panel p-5">
+          <p className="text-sm text-mute">موجودی نقدی</p>
+          <p className="mt-2 text-2xl font-bold">{formatNumber(Math.round(liquid))} <span className="text-sm font-medium text-mute">تومان</span></p>
+          <Link to="/accounts" className="mt-2 inline-block text-sm text-gold">حساب‌ها</Link>
+        </article>
+        <article className="rounded-3xl border border-gold/40 bg-panel p-5">
+          <p className="text-sm text-mute">دارایی خالص</p>
+          <p className="mt-2 text-2xl font-bold text-gold">{formatNumber(Math.round(worth))} <span className="text-sm font-medium text-mute">تومان</span></p>
+          <div className="mt-3">
+            <NetWorthChart accounts={state.accounts} transactions={state.transactions} lots={state.lots} quotes={state.quotes} />
+          </div>
+        </article>
+      </section>
+
       <MarketBoard />
 
       <section className="grid gap-3 md:grid-cols-3">
@@ -35,16 +70,34 @@ export function DashboardPage() {
         <Stat
           label="مانده"
           value={`${balance < 0 ? '−' : ''}${formatNumber(Math.abs(balance))}`}
-          hint={
-            balance === 0
-              ? 'درآمد و هزینه برابر است'
-              : balance > 0
-                ? 'از درآمد این ماه مانده'
-                : 'بیشتر از درآمد خرج شده'
-          }
+          hint={rate == null ? 'نرخ پس‌انداز وقتی درآمد باشد' : `نرخ پس‌انداز ${formatNumber(Math.round(rate * 100))}٪`}
           tone={balance < 0 ? 'text-out' : 'text-gold'}
           bar="bg-gold"
         />
+      </section>
+
+      <section className="grid gap-3 md:grid-cols-2">
+        <article className="rounded-3xl border border-line bg-panel p-5">
+          <h2 className="font-bold">تعهدات باقی‌مانده این ماه</h2>
+          <p className="mt-2 text-xl font-bold">{formatNumber(commitments)} <span className="text-sm font-medium text-mute">تومان</span></p>
+          <ul className="mt-3 flex flex-col gap-1 text-sm text-mute">
+            {upcoming.length === 0 ? <li>پرداخت نزدیکی نیست.</li> : null}
+            {upcoming.map((rule) => (
+              <li key={rule.id}>
+                {rule.title} — {formatDayLabel(rule.nextDate)}
+              </li>
+            ))}
+          </ul>
+          <Link to="/plans" className="mt-3 inline-block text-sm text-gold">پرداخت‌های آینده</Link>
+        </article>
+        <article className="rounded-3xl border border-line bg-panel p-5">
+          <h2 className="font-bold">ادامه</h2>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link to="/reports" className="rounded-2xl border border-line px-3 py-2 text-sm">گزارش</Link>
+            <Link to="/goals" className="rounded-2xl border border-line px-3 py-2 text-sm">اهداف</Link>
+            <Link to="/accounts" className="rounded-2xl border border-line px-3 py-2 text-sm">حساب‌ها</Link>
+          </div>
+        </article>
       </section>
 
       {rows.length === 0 ? (
@@ -94,7 +147,7 @@ export function DashboardPage() {
                 همه
               </Link>
             </div>
-            <TransactionList items={latest} />
+            <TransactionList items={latest} accounts={state.accounts} />
           </section>
         </>
       )}

@@ -38,6 +38,11 @@ export function shiftMonth(month: string, delta: number) {
   return jalaliDay(`${month}-01`).add(delta, 'month').format('YYYY-MM')
 }
 
+export function shiftDate(date: string, frequency: 'monthly' | 'weekly') {
+  const next = frequency === 'weekly' ? jalaliDay(date).add(7, 'day') : jalaliDay(date).add(1, 'month')
+  return next.format('YYYY-MM-DD')
+}
+
 export function daysInMonth(year: number, month: number) {
   return jalaliDay(`${year}-${String(month).padStart(2, '0')}-01`).daysInMonth()
 }

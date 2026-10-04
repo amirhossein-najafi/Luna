@@ -20,7 +20,7 @@ export function TransactionsPage() {
   const [categoryId, setCategoryId] = useState('all')
   const creating = params.get('new') === '1' && !editing
 
-  const categoryOptions = type === 'all' ? categories : categoriesFor(type)
+  const categoryOptions = type === 'income' || type === 'expense' ? categoriesFor(type) : type === 'all' ? categories : []
   const defaultDate = month === currentMonth() ? todayJalali() : formatIsoDate(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1)
 
   const visible = useMemo(() => {
@@ -45,6 +45,10 @@ export function TransactionsPage() {
 
   function changeType(next: 'all' | TransactionType) {
     setType(next)
+    if (next === 'transfer') {
+      setCategoryId('all')
+      return
+    }
     if (categoryId !== 'all' && next !== 'all' && !categoriesFor(next).some((category) => category.id === categoryId)) {
       setCategoryId('all')
     }
@@ -83,6 +87,7 @@ export function TransactionsPage() {
           <option value="all">همه</option>
           <option value="expense">هزینه</option>
           <option value="income">درآمد</option>
+          <option value="transfer">انتقال</option>
         </select>
         <select className={fieldClass} aria-label="دسته" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
           <option value="all">همه دسته‌ها</option>
@@ -122,6 +127,7 @@ export function TransactionsPage() {
       ) : (
         <TransactionList
           items={visible}
+          accounts={state.accounts}
           onEdit={setEditing}
           onDelete={(id) => {
             deleteTransaction(id)
@@ -135,9 +141,10 @@ export function TransactionsPage() {
             key={editing?.id ?? 'new'}
             initial={editing ?? undefined}
             defaultDate={defaultDate}
+            accounts={state.accounts}
             onClose={closeForm}
             onSave={(tx) => {
-              if (editing) updateTransaction({ ...tx, id: editing.id, note: tx.note })
+              if (editing) updateTransaction({ ...editing, ...tx, id: editing.id })
               else addTransaction(tx)
             }}
           />
