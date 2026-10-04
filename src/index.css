@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
+  --color-ink: var(--ink);
+  --color-panel: var(--panel);
+  --color-raise: var(--raise);
+  --color-line: var(--line);
+  --color-cream: var(--cream);
+  --color-mute: var(--mute);
+  --color-gold: var(--gold);
+  --color-on-gold: var(--on-gold);
+  --color-in: var(--in);
+  --color-out: var(--out);
+}
+
+:root {
+  color-scheme: light;
+  --ink: #f3efe6;
+  --panel: #fffdf8;
+  --raise: #efe8da;
+  --line: #e4d9c8;
+  --cream: #1c1914;
+  --mute: #6f675c;
+  --gold: #8a5a0b;
+  --on-gold: #fffdf8;
+  --in: #0d7a4c;
+  --out: #b42318;
+}
+
+.dark {
+  color-scheme: dark;
+  --ink: #101411;
+  --panel: #181d19;
+  --raise: #232a24;
+  --line: #313a32;
+  --cream: #f4f1ea;
+  --mute: #a3aea4;
+  --gold: #e0b15a;
+  --on-gold: #1c1408;
+  --in: #3cba86;
+  --out: #f08a8a;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(880px 380px at 100% -8%, color-mix(in srgb, var(--gold) 18%, transparent), transparent 58%),
+    radial-gradient(640px 320px at 0% 110%, color-mix(in srgb, var(--in) 12%, transparent), transparent 52%),
+    var(--ink);
+  color: var(--cream);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--gold) 35%, transparent);
+}

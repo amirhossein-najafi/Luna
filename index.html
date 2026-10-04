@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fa" dir="rtl" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Luna، مدیریت دخل‌وخرج شخصی با تاریخ شمسی، بودجه و ارزش طلا و دلار."
+    />
+    <title>Luna | مدیریت مالی شخصی</title>
+    <script>
+      try {
+        if (localStorage.getItem('luna-theme') === 'light') {
+          document.documentElement.classList.remove('dark')
+        }
+      } catch (error) {
+        /* Theme stays dark when storage is blocked. */
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
