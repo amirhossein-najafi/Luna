@@ -17,6 +17,8 @@ import {
   type Quote,
   type QuoteSource,
   type RecurringFrequency,
+  type RecurringOverride,
+  type RecurringOverrideAction,
   type RecurringRule,
   type Transaction,
   type CustomCategory,
@@ -35,9 +37,10 @@ export function emptyState(): FinanceState {
     accounts: [defaultAccount()],
     recurring: [],
     goals: [],
-    categories: [],
-    inflationRate: 35,
-  }
+  categories: [],
+  inflationRate: 35,
+  safetyBuffer: 0,
+}
 }
 
 function isKind(value: unknown): value is HoldingKind {
@@ -255,6 +258,29 @@ function cleanQuotes(value: unknown): Quote[] {
   return [...quotes.values()]
 }
 
+function isOverrideAction(value: unknown): value is RecurringOverrideAction {
+  return value === 'skip' || value === 'postpone' || value === 'edit' || value === 'posted'
+}
+
+function cleanOverrides(value: unknown, type: FlowType, accountIds: Set<string>, extra: CustomCategory[]): RecurringOverride[] {
+  if (!Array.isArray(value)) return []
+  const overrides: RecurringOverride[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const row = item as Partial<RecurringOverride>
+    if (typeof row.occurrenceDate !== 'string' || !parseJalaliDate(row.occurrenceDate)) continue
+    if (!isOverrideAction(row.action)) continue
+    const next: RecurringOverride = { occurrenceDate: row.occurrenceDate, action: row.action }
+    if (typeof row.amount === 'number' && Number.isFinite(row.amount) && row.amount > 0) next.amount = Math.round(row.amount)
+    if (typeof row.categoryId === 'string' && categoryById(row.categoryId, extra)?.type === type) next.categoryId = row.categoryId
+    if (typeof row.accountId === 'string' && accountIds.has(row.accountId)) next.accountId = row.accountId
+    if (typeof row.date === 'string' && parseJalaliDate(row.date)) next.date = row.date
+    if (typeof row.transactionId === 'string' && row.transactionId) next.transactionId = row.transactionId.slice(0, 80)
+    overrides.push(next)
+  }
+  return overrides.slice(0, 240)
+}
+
 function cleanRecurring(value: unknown, accountIds: Set<string>, extra: CustomCategory[]): RecurringRule[] {
   if (!Array.isArray(value)) return []
   const rules: RecurringRule[] = []
@@ -282,6 +308,7 @@ function cleanRecurring(value: unknown, accountIds: Set<string>, extra: CustomCa
       frequency: rule.frequency,
       nextDate: rule.nextDate,
       endDate: rule.endDate,
+      overrides: cleanOverrides(rule.overrides, rule.type, accountIds, extra),
     })
   }
   return rules
@@ -343,6 +370,8 @@ export function normalizeState(value: unknown): FinanceState {
     goals: cleanGoals(source.goals, accountIds),
     categories: customCategories,
     inflationRate,
+    safetyBuffer:
+      typeof source.safetyBuffer === 'number' && Number.isFinite(source.safetyBuffer) ? Math.max(0, Math.round(source.safetyBuffer)) : 0,
   }
 }
 

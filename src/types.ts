@@ -7,6 +7,17 @@ export type FlowType = 'income' | 'expense'
 export type TransactionType = FlowType | 'transfer'
 export type QuoteSource = 'tgju' | 'brsapi' | 'manual'
 export type RecurringFrequency = 'monthly' | 'weekly'
+export type RecurringOverrideAction = 'skip' | 'postpone' | 'edit' | 'posted'
+
+export type RecurringOverride = {
+  occurrenceDate: string
+  action: RecurringOverrideAction
+  amount?: number
+  categoryId?: string
+  accountId?: string
+  date?: string
+  transactionId?: string
+}
 
 export const DEFAULT_ACCOUNT_ID = 'cash-wallet'
 
@@ -70,6 +81,7 @@ export type RecurringRule = {
   frequency: RecurringFrequency
   nextDate: string
   endDate?: string
+  overrides?: RecurringOverride[]
 }
 
 export type Goal = {
@@ -99,6 +111,7 @@ export type FinanceState = {
   goals: Goal[]
   categories: CustomCategory[]
   inflationRate: number
+  safetyBuffer: number
 }
 
 export const HOLDING_META: Record<HoldingKind, { name: string; unit: string; priceLabel: string }> = {

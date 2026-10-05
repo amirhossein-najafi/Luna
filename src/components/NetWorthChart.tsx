@@ -63,7 +63,7 @@ export function NetWorthChart({
       const price = series.find((item) => item.kind === kind)?.points.find((row) => row.iso === point.iso)?.price
         ?? quotes.find((quote) => quote.kind === kind)?.price
         ?? 0
-      return sum + quantityOf(lots, kind) * price
+      return sum + quantityOf(lots, kind, point.iso) * price
     }, 0)
     return { label: point.fullDate, net: liquid + assets }
   })

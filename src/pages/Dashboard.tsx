@@ -3,14 +3,15 @@ import { DailyBars, ExpenseDonut } from '../components/Charts.tsx'
 import { MarketBoard } from '../components/MarketBoard.tsx'
 import { MonthSwitcher } from '../components/MonthSwitcher.tsx'
 import { NetWorthChart } from '../components/NetWorthChart.tsx'
+import { SafeToSpendCard } from '../components/SafeToSpendCard.tsx'
 import { TransactionList } from '../components/TransactionList.tsx'
 import { PageHeader } from '../components/ui.tsx'
 import { healthScore } from '../domain/health.ts'
 import { cashPosition } from '../domain/ledger.ts'
 import { monthInsights, savingsRate } from '../domain/insights.ts'
-import { remainingCommitments, upcomingRules } from '../domain/recurring.ts'
+import { expandRules } from '../domain/recurring.ts'
 import { netWorth } from '../domain/wealth.ts'
-import { formatDayLabel, formatMonthLabel, todayJalali } from '../lib/jalali.ts'
+import { formatDayLabel, formatMonthLabel, shiftDays, todayJalali } from '../lib/jalali.ts'
 import { formatNumber } from '../lib/money.ts'
 import { expenseSlices, inMonth, recentDaySeries, spentInCategory, totalOf } from '../lib/stats.ts'
 import { useFinance } from '../store/finance.tsx'
@@ -37,8 +38,7 @@ export function DashboardPage() {
     debt: position.debt,
   })
   const worth = netWorth(state.accounts, state.transactions, state.lots, state.quotes)
-  const commitments = remainingCommitments(state.recurring, month, today)
-  const upcoming = upcomingRules(state.recurring, today).slice(0, 3)
+  const upcoming = expandRules(state.recurring, today, shiftDays(today, 45), state.transactions).slice(0, 3)
   const slices = expenseSlices(rows, state.categories)
   const days = recentDaySeries(rows, month)
   const top = slices.reduce<(typeof slices)[number] | null>((best, slice) => {
@@ -50,6 +50,15 @@ export function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader eyebrow="خلاصه ماه" title="داشبورد" action={<MonthSwitcher />} />
+
+      <SafeToSpendCard
+        accounts={state.accounts}
+        transactions={state.transactions}
+        rules={state.recurring}
+        goals={state.goals}
+        safetyBuffer={state.safetyBuffer}
+        today={today}
+      />
 
       <article className="rounded-3xl border border-line bg-panel p-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -126,13 +135,12 @@ export function DashboardPage() {
 
       <section className="grid gap-3 md:grid-cols-2">
         <article className="rounded-3xl border border-line bg-panel p-5">
-          <h2 className="font-bold">تعهدات باقی‌مانده این ماه</h2>
-          <p className="mt-2 text-xl font-bold">{formatNumber(commitments)} <span className="text-sm font-medium text-mute">تومان</span></p>
+          <h2 className="font-bold">پرداخت‌های نزدیک</h2>
           <ul className="mt-3 flex flex-col gap-1 text-sm text-mute">
             {upcoming.length === 0 ? <li>پرداخت نزدیکی نیست.</li> : null}
-            {upcoming.map((rule) => (
-              <li key={rule.id}>
-                {rule.title} — {formatDayLabel(rule.nextDate)}
+            {upcoming.map((item) => (
+              <li key={`${item.ruleId}-${item.occurrenceDate}`}>
+                {item.title} — {formatDayLabel(item.date)} — {formatNumber(item.amount)}
               </li>
             ))}
           </ul>

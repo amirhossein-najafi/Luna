@@ -1,9 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react'
-import { rollRecurring } from '../domain/recurring.ts'
+import { editOccurrence, payOccurrence, postponeOccurrence, skipOccurrence, type OccurrencePatch } from '../domain/recurring.ts'
 import { mergeQuotes } from '../domain/quotes.ts'
 import { categories, categoryInUse } from '../data/categories.ts'
 import { emptyState, loadState, saveState } from '../lib/backup.ts'
-import { currentMonth, shiftMonth, todayJalali } from '../lib/jalali.ts'
+import { currentMonth, shiftMonth } from '../lib/jalali.ts'
 import type { Account, AssetLot, Budget, CustomCategory, FinanceState, Goal, MonthBudget, Quote, RecurringRule, Transaction } from '../types.ts'
 
 type Action =
@@ -23,7 +23,11 @@ type Action =
   | { type: 'deleteGoal'; id: string }
   | { type: 'recurring'; rule: RecurringRule }
   | { type: 'deleteRecurring'; id: string }
-  | { type: 'rolled'; transactions: Transaction[]; recurring: RecurringRule[] }
+  | { type: 'payOccurrence'; ruleId: string; occurrenceDate: string }
+  | { type: 'skipOccurrence'; ruleId: string; occurrenceDate: string }
+  | { type: 'postponeOccurrence'; ruleId: string; occurrenceDate: string; date: string }
+  | { type: 'editOccurrence'; ruleId: string; occurrenceDate: string; patch: OccurrencePatch }
+  | { type: 'safetyBuffer'; amount: number }
   | { type: 'category'; category: CustomCategory }
   | { type: 'deleteCategory'; id: string }
   | { type: 'inflation'; rate: number }
@@ -52,6 +56,11 @@ type FinanceContextValue = {
   deleteGoal: (id: string) => void
   saveRecurring: (rule: RecurringRule) => void
   deleteRecurring: (id: string) => void
+  payOccurrence: (ruleId: string, occurrenceDate: string) => void
+  skipOccurrence: (ruleId: string, occurrenceDate: string) => void
+  postponeOccurrence: (ruleId: string, occurrenceDate: string, date: string) => void
+  editOccurrence: (ruleId: string, occurrenceDate: string, patch: OccurrencePatch) => void
+  setSafetyBuffer: (amount: number) => void
   saveCategory: (category: CustomCategory) => void
   deleteCategory: (id: string) => void
   setInflationRate: (rate: number) => void
@@ -138,14 +147,38 @@ function reducer(state: FinanceState, action: Action): FinanceState {
       return { ...state, goals: state.goals.filter((goal) => goal.id !== action.id) }
     case 'recurring': {
       const rule = withId(action.rule)
-      const exists = state.recurring.some((item) => item.id === rule.id)
+      const existing = state.recurring.find((item) => item.id === rule.id)
+      const next = { ...rule, overrides: rule.overrides ?? existing?.overrides ?? [] }
+      const exists = existing != null
       return {
         ...state,
-        recurring: exists ? state.recurring.map((item) => (item.id === rule.id ? rule : item)) : [rule, ...state.recurring],
+        recurring: exists ? state.recurring.map((item) => (item.id === next.id ? next : item)) : [next, ...state.recurring],
       }
     }
     case 'deleteRecurring':
       return { ...state, recurring: state.recurring.filter((rule) => rule.id !== action.id) }
+    case 'payOccurrence': {
+      const paid = payOccurrence(state.recurring, state.transactions, action.ruleId, action.occurrenceDate)
+      if (!paid.changed) return state
+      return { ...state, recurring: paid.rules, transactions: paid.transactions }
+    }
+    case 'skipOccurrence': {
+      const skipped = skipOccurrence(state.recurring, action.ruleId, action.occurrenceDate)
+      if (!skipped.changed) return state
+      return { ...state, recurring: skipped.rules }
+    }
+    case 'postponeOccurrence': {
+      const moved = postponeOccurrence(state.recurring, action.ruleId, action.occurrenceDate, action.date)
+      if (!moved.changed) return state
+      return { ...state, recurring: moved.rules }
+    }
+    case 'editOccurrence': {
+      const edited = editOccurrence(state.recurring, action.ruleId, action.occurrenceDate, action.patch)
+      if (!edited.changed) return state
+      return { ...state, recurring: edited.rules }
+    }
+    case 'safetyBuffer':
+      return { ...state, safetyBuffer: Math.max(0, Math.round(action.amount)) }
     case 'category': {
       const category = withId(action.category)
       const name = category.name.trim().slice(0, 24)
@@ -176,8 +209,6 @@ function reducer(state: FinanceState, action: Action): FinanceState {
       }))
       return { ...state, transactions: [...rows, ...state.transactions] }
     }
-    case 'rolled':
-      return { ...state, transactions: action.transactions, recurring: action.recurring }
     case 'replace':
       return action.state
     case 'reset':
@@ -192,12 +223,6 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     saveState(state)
   }, [state])
-
-  useEffect(() => {
-    const rolled = rollRecurring(state.recurring, state.transactions, todayJalali())
-    if (!rolled.changed) return
-    dispatch({ type: 'rolled', transactions: rolled.transactions, recurring: rolled.rules })
-  }, [state.recurring, state.transactions])
 
   const value = useMemo<FinanceContextValue>(
     () => ({
@@ -221,6 +246,11 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       deleteGoal: (id) => dispatch({ type: 'deleteGoal', id }),
       saveRecurring: (rule) => dispatch({ type: 'recurring', rule }),
       deleteRecurring: (id) => dispatch({ type: 'deleteRecurring', id }),
+      payOccurrence: (ruleId, occurrenceDate) => dispatch({ type: 'payOccurrence', ruleId, occurrenceDate }),
+      skipOccurrence: (ruleId, occurrenceDate) => dispatch({ type: 'skipOccurrence', ruleId, occurrenceDate }),
+      postponeOccurrence: (ruleId, occurrenceDate, date) => dispatch({ type: 'postponeOccurrence', ruleId, occurrenceDate, date }),
+      editOccurrence: (ruleId, occurrenceDate, patch) => dispatch({ type: 'editOccurrence', ruleId, occurrenceDate, patch }),
+      setSafetyBuffer: (amount) => dispatch({ type: 'safetyBuffer', amount }),
       saveCategory: (category) => dispatch({ type: 'category', category }),
       deleteCategory: (id) => dispatch({ type: 'deleteCategory', id }),
       setInflationRate: (rate) => dispatch({ type: 'inflation', rate }),

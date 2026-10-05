@@ -7,11 +7,26 @@ import { realValue } from './inflation.ts'
 import { monthInsights, savingsRate } from './insights.ts'
 import { accountBalance, cashPosition } from './ledger.ts'
 import { mergeQuotes } from './quotes.ts'
-import { rollRecurring } from './recurring.ts'
-import { unrealizedGain } from './wealth.ts'
+import { projectCashflow } from './forecast.ts'
+import { editOccurrence, expandRecurring, payOccurrence, postponeOccurrence, skipOccurrence } from './recurring.ts'
+import { safeToSpend } from './spend.ts'
+import { netWorth, quantityOf, unrealizedGain } from './wealth.ts'
 import { parseBackup, serializeBackup } from '../lib/backup.ts'
 import { totalOf } from '../lib/stats.ts'
-import { defaultAccount, type Account, type Quote, type Transaction } from '../types.ts'
+import { defaultAccount, type Account, type Goal, type Quote, type RecurringRule, type Transaction } from '../types.ts'
+
+function rentRule(nextDate: string): RecurringRule {
+  return {
+    id: 'rent',
+    title: 'اجاره',
+    amount: 1000,
+    type: 'expense',
+    categoryId: 'home',
+    accountId: 'cash-wallet',
+    frequency: 'monthly',
+    nextDate,
+  }
+}
 
 function tx(partial: Partial<Transaction> & Pick<Transaction, 'id' | 'type' | 'amount' | 'date'>): Transaction {
   return {
@@ -51,6 +66,7 @@ describe('quotes and backup', () => {
     const file = JSON.parse(serializeBackup({ ...state, apiKey: 'secret' })) as { apiKey?: string; version: number }
     expect(file.apiKey).toBeUndefined()
     expect(file.version).toBe(2)
+    expect(state.safetyBuffer).toBe(0)
 
     const broken = parseBackup(JSON.stringify({
       app: 'luna',
@@ -106,25 +122,47 @@ describe('insights, wealth, recurring, budget', () => {
     expect(gain.unknown).toBe(true)
   })
 
-  it('posts a due rule once', () => {
-    const rule = {
-      id: 'rent',
-      title: 'اجاره',
-      amount: 1000,
-      type: 'expense' as const,
-      categoryId: 'home',
-      accountId: 'cash-wallet',
-      frequency: 'monthly' as const,
-      nextDate: '1405-07-01',
-    }
-    const first = rollRecurring([rule], [], '1405-07-12')
+  it('posts one occurrence and ignores a second pay', () => {
+    const rule = rentRule('1405-07-01')
+    const first = payOccurrence([rule], [], 'rent', '1405-07-01', '2026-01-01T00:00:00.000Z')
     expect(first.changed).toBe(true)
     expect(first.transactions).toHaveLength(1)
     expect(first.transactions[0].id).toBe('recur-rent-1405-07-01')
-    expect(first.rules[0].nextDate > '1405-07-12').toBe(true)
-    const second = rollRecurring(first.rules, first.transactions, '1405-07-12')
+    const second = payOccurrence(first.rules, first.transactions, 'rent', '1405-07-01')
     expect(second.changed).toBe(false)
     expect(second.transactions).toHaveLength(1)
+  })
+
+  it('does not create a transaction when an occurrence is skipped', () => {
+    const skipped = skipOccurrence([rentRule('1405-07-01')], 'rent', '1405-07-01')
+    expect(expandRecurring(skipped.rules[0], '1405-07-01', '1405-07-01', [])).toEqual([])
+    expect(payOccurrence(skipped.rules, [], 'rent', '1405-07-01').changed).toBe(false)
+  })
+
+  it('keeps the next cadence date when one occurrence is postponed', () => {
+    const moved = postponeOccurrence([rentRule('1405-07-15')], 'rent', '1405-07-15', '1405-07-20')
+    const dates = expandRecurring(moved.rules[0], '1405-07-01', '1405-08-20', []).map((item) => item.date)
+    expect(dates).toEqual(['1405-07-20', '1405-08-15'])
+  })
+
+  it('treats an older auto-posted transaction as already paid', () => {
+    const posted = tx({
+      id: 'recur-rent-1405-07-01',
+      type: 'expense',
+      amount: 1000,
+      date: '1405-07-01',
+      categoryId: 'home',
+      note: 'اجاره',
+      recurringId: 'rent',
+    })
+    const dates = expandRecurring(rentRule('1405-07-01'), '1405-07-01', '1405-08-01', [posted]).map((item) => item.occurrenceDate)
+    expect(dates).toEqual(['1405-08-01'])
+  })
+
+  it('pays the edited amount for a single occurrence', () => {
+    const edited = editOccurrence([rentRule('1405-07-01')], 'rent', '1405-07-01', { amount: 1500 })
+    const paid = payOccurrence(edited.rules, [], 'rent', '1405-07-01', '2026-01-01T00:00:00.000Z')
+    expect(paid.transactions[0].amount).toBe(1500)
   })
 
   it('warns when the pace empties a budget before month end', () => {
@@ -177,6 +215,110 @@ describe('import, inflation and health', () => {
     expect(calm.score).toBeGreaterThan(strained.score)
     expect(calm.title).toBe('آرام')
     expect(strained.parts.find((part) => part.id === 'debt')?.score).toBeLessThan(50)
+  })
+
+  it('reserves manual goals and leaves a linked savings balance out of safe-to-spend', () => {
+    const wallet: Account = { ...defaultAccount(), openingBalance: 10_000_000 }
+    const savings: Account = { id: 'save', name: 'پس‌انداز', kind: 'savings', openingBalance: 5_000_000, archived: false }
+    const goals: Goal[] = [
+      { id: 'linked', title: 'سفر', target: 5_000_000, saved: 0, accountId: 'save' },
+      { id: 'manual', title: 'دفتر', target: 2_000_000, saved: 1_000_000 },
+    ]
+    const rules = [
+      rentRule('1405-07-20'),
+      { ...rentRule('1405-07-28'), id: 'salary', title: 'حقوق', amount: 8_000_000, type: 'income' as const, categoryId: 'salary' },
+    ]
+    rules[0] = { ...rules[0], amount: 2_000_000 }
+    const spend = safeToSpend({
+      accounts: [wallet, savings],
+      transactions: [],
+      rules,
+      goals,
+      safetyBuffer: 0,
+      today: '1405-07-12',
+    })
+    expect(spend.spendable).toBe(10_000_000)
+    expect(spend.commitments).toBe(2_000_000)
+    expect(spend.goalReserve).toBe(1_000_000)
+    expect(spend.safeTotal).toBe(7_000_000)
+    expect(spend.paydayKnown).toBe(true)
+    expect(spend.horizon).toBe('1405-07-28')
+    expect(spend.days).toBe(16)
+    expect(spend.daily).toBeCloseTo(7_000_000 / 16)
+  })
+
+  it('uses the end of the month when no income rule exists', () => {
+    const spend = safeToSpend({
+      accounts: [defaultAccount()],
+      transactions: [],
+      rules: [],
+      goals: [],
+      safetyBuffer: 0,
+      today: '1405-07-12',
+    })
+    expect(spend.paydayKnown).toBe(false)
+    expect(spend.horizon).toBe('1405-07-30')
+    expect(spend.days).toBe(19)
+  })
+
+  it('counts a future posted payment in the forecast without planning it twice', () => {
+    const wallet: Account = { ...defaultAccount(), openingBalance: 10_000_000 }
+    const paid = tx({
+      id: 'recur-rent-1405-07-20',
+      type: 'expense',
+      amount: 2_000_000,
+      date: '1405-07-20',
+      categoryId: 'home',
+      recurringId: 'rent',
+    })
+    const projection = projectCashflow({
+      accounts: [wallet],
+      transactions: [paid],
+      rules: [{ ...rentRule('1405-07-20'), amount: 2_000_000 }],
+      today: '1405-07-13',
+      days: 30,
+    })
+    expect(projection.timeline.some((item) => item.occurrenceDate === '1405-07-20')).toBe(false)
+    expect(projection.points.find((item) => item.date === '1405-07-20')?.spendable).toBe(8_000_000)
+    const spend = safeToSpend({
+      accounts: [wallet],
+      transactions: [paid],
+      rules: [{ ...rentRule('1405-07-20'), amount: 2_000_000 }],
+      goals: [],
+      safetyBuffer: 0,
+      today: '1405-07-13',
+    })
+    expect(spend.commitments).toBe(2_000_000)
+    expect(spend.safeTotal).toBe(8_000_000)
+  })
+
+  it('finds the day a spendable account would go negative', () => {
+    const wallet: Account = { ...defaultAccount(), openingBalance: 1_000_000 }
+    const projection = projectCashflow({
+      accounts: [wallet],
+      transactions: [],
+      rules: [
+        { ...rentRule('1405-07-12'), id: 'salary', title: 'حقوق', amount: 10_000_000, type: 'income', categoryId: 'salary' },
+        { ...rentRule('1405-07-15'), amount: 12_000_000 },
+      ],
+      today: '1405-07-10',
+      days: 90,
+    })
+    expect(projection.firstNegative).toMatchObject({ accountId: 'cash-wallet', date: '1405-07-15', balance: -1_000_000 })
+    expect(projection.horizons.map((item) => item.days)).toEqual([30, 60, 90])
+  })
+
+  it('ignores lots bought after the historical date', () => {
+    const lots = [
+      { id: 'old', kind: 'gold18' as const, quantity: 2, unitCost: 10, date: '1405-06-01', note: '' },
+      { id: 'new', kind: 'gold18' as const, quantity: 3, unitCost: 10, date: '1405-07-20', note: '' },
+    ]
+    const quotes: Quote[] = [{ kind: 'gold18', price: 100, source: 'manual', fetchedAt: '2026-01-01T00:00:00.000Z' }]
+    expect(quantityOf(lots, 'gold18', '1405-07-01')).toBe(2)
+    expect(quantityOf(lots, 'gold18', '1405-07-20')).toBe(5)
+    expect(quantityOf(lots, 'gold18')).toBe(5)
+    expect(netWorth([defaultAccount()], [], lots, quotes, '1405-07-01')).toBe(200)
+    expect(netWorth([defaultAccount()], [], lots, quotes, '1405-07-20')).toBe(500)
   })
 
   it('sends income through the month and out to spending and savings', () => {

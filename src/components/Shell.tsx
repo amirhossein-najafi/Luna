@@ -1,6 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { lockEnabled, sessionUnlocked } from '../lib/lock.ts'
+import { remindUpcoming } from '../lib/reminders.ts'
+import { useFinance } from '../store/finance.tsx'
+import { AppLock } from './AppLock.tsx'
 import { IconBudget, IconCoin, IconGear, IconHome, IconList } from './icons.tsx'
+import { useInstallPrompt } from './install.tsx'
 
 const links = [
   { to: '/', label: 'داشبورد', short: 'خانه', end: true, icon: IconHome },
@@ -50,6 +55,17 @@ function itemClass(active: boolean) {
 }
 
 export function Shell() {
+  const { state } = useFinance()
+  const [locked, setLocked] = useState(() => lockEnabled() && !sessionUnlocked())
+  const { canInstall, install } = useInstallPrompt()
+
+  useEffect(() => {
+    if (locked) return
+    remindUpcoming(state.recurring, state.transactions)
+  }, [locked, state.recurring, state.transactions])
+
+  if (locked) return <AppLock onUnlock={() => setLocked(false)} />
+
   return (
     <div className="min-h-screen md:flex">
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-e border-line bg-panel md:flex">
@@ -77,6 +93,11 @@ export function Shell() {
           ))}
         </nav>
         <div className="p-3">
+          {canInstall ? (
+            <button type="button" className="mb-1 w-full rounded-2xl px-3 py-2.5 text-start text-sm text-gold hover:bg-raise" onClick={() => void install()}>
+              نصب Luna
+            </button>
+          ) : null}
           <ThemeToggle />
         </div>
       </aside>

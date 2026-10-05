@@ -43,6 +43,20 @@ export function shiftDate(date: string, frequency: 'monthly' | 'weekly') {
   return next.format('YYYY-MM-DD')
 }
 
+export function shiftDays(date: string, days: number) {
+  return jalaliDay(date).add(days, 'day').format('YYYY-MM-DD')
+}
+
+export function daysBetween(earlier: string, later: string) {
+  return jalaliDay(later).startOf('day').diff(jalaliDay(earlier).startOf('day'), 'day')
+}
+
+export function endOfMonth(date: string) {
+  const parsed = parseJalaliDate(date)
+  if (!parsed) return date
+  return formatIsoDate(parsed.year, parsed.month, daysInMonth(parsed.year, parsed.month))
+}
+
 export function daysInMonth(year: number, month: number) {
   return jalaliDay(`${year}-${String(month).padStart(2, '0')}-01`).daysInMonth()
 }

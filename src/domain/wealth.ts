@@ -1,14 +1,16 @@
 import { cashPosition } from './ledger.ts'
 import { HOLDING_KINDS, type Account, type AssetLot, type HoldingKind, type Quote, type Transaction } from '../types.ts'
 
-export function quantityOf(lots: AssetLot[], kind: HoldingKind) {
-  return lots.filter((lot) => lot.kind === kind).reduce((sum, lot) => sum + lot.quantity, 0)
+export function quantityOf(lots: AssetLot[], kind: HoldingKind, until?: string) {
+  return lots
+    .filter((lot) => lot.kind === kind && (!until || lot.date <= until))
+    .reduce((sum, lot) => sum + lot.quantity, 0)
 }
 
-export function marketValue(lots: AssetLot[], quotes: Quote[]) {
+export function marketValue(lots: AssetLot[], quotes: Quote[], until?: string) {
   return HOLDING_KINDS.reduce((sum, kind) => {
     const price = quotes.find((quote) => quote.kind === kind)?.price ?? 0
-    return sum + quantityOf(lots, kind) * price
+    return sum + quantityOf(lots, kind, until) * price
   }, 0)
 }
 
@@ -38,5 +40,5 @@ export function unrealizedGain(lots: AssetLot[], quotes: Quote[]) {
 }
 
 export function netWorth(accounts: Account[], transactions: Transaction[], lots: AssetLot[], quotes: Quote[], until?: string) {
-  return cashPosition(accounts, transactions, until).liquid + marketValue(lots, quotes)
+  return cashPosition(accounts, transactions, until).liquid + marketValue(lots, quotes, until)
 }

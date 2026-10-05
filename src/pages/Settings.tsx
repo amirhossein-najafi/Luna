@@ -1,15 +1,18 @@
 import { useEffect, useState, type ChangeEvent } from 'react'
+import { useInstallPrompt } from '../components/install.tsx'
 import { Button, Notice, PageHeader, fieldClass } from '../components/ui.tsx'
 import { categories, categoryInUse, nextCategoryTone } from '../data/categories.ts'
 import { parseTransactionCsv, type CsvDraft } from '../domain/csv.ts'
 import { parseBackup, serializeBackup } from '../lib/backup.ts'
 import { todayJalali } from '../lib/jalali.ts'
-import { formatNumber } from '../lib/money.ts'
+import { checkPin, clearLock, lockEnabled, pinLooksValid, savePin } from '../lib/lock.ts'
+import { formatNumber, parseAmount } from '../lib/money.ts'
+import { notificationsEnabled, requestNotificationPermission, setNotificationsEnabled } from '../lib/reminders.ts'
 import { useFinance } from '../store/finance.tsx'
 import type { FlowType } from '../types.ts'
 
 export function SettingsPage() {
-  const { state, setApiKey, replaceAll, reset, saveCategory, deleteCategory, importTransactions } = useFinance()
+  const { state, setApiKey, replaceAll, reset, saveCategory, deleteCategory, importTransactions, setSafetyBuffer } = useFinance()
   const [draft, setDraft] = useState(state.apiKey)
   const [message, setMessage] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null)
   const [confirming, setConfirming] = useState(false)
@@ -122,6 +125,11 @@ export function SettingsPage() {
           ذخیره کلید
         </Button>
       </section>
+
+      <BufferSection amount={state.safetyBuffer} onSave={setSafetyBuffer} />
+      <NotifySection />
+      <LockSection />
+      <InstallSection />
 
       <section className="rounded-3xl border border-line bg-panel p-5">
         <h2 className="font-bold">دسته‌های خودت</h2>
@@ -248,5 +256,162 @@ export function SettingsPage() {
         )}
       </section>
     </div>
+  )
+}
+
+function BufferSection({ amount, onSave }: { amount: number; onSave: (amount: number) => void }) {
+  const [draft, setDraft] = useState(amount > 0 ? String(amount) : '')
+
+  useEffect(() => {
+    setDraft(amount > 0 ? String(amount) : '')
+  }, [amount])
+
+  return (
+    <section className="rounded-3xl border border-line bg-panel p-5">
+      <h2 className="font-bold">بافر ایمنی</h2>
+      <p className="mt-2 text-sm text-mute">این مبلغ از خرج امن کم می‌شود تا همیشه یک حاشیه دست‌نخورده بماند. صفر یعنی بدون بافر.</p>
+      <label className="mt-4 flex flex-col gap-1.5 text-sm">
+        مبلغ تومان
+        <input
+          dir="ltr"
+          className={`${fieldClass} text-end`}
+          inputMode="numeric"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+      </label>
+      <Button
+        className="mt-3"
+        onClick={() => onSave(parseAmount(draft))}
+      >
+        ذخیره بافر
+      </Button>
+    </section>
+  )
+}
+
+function NotifySection() {
+  const [on, setOn] = useState(notificationsEnabled)
+  const [note, setNote] = useState('')
+
+  return (
+    <section className="rounded-3xl border border-line bg-panel p-5">
+      <h2 className="font-bold">یادآور سررسید</h2>
+      <p className="mt-2 text-sm text-mute">اگر اپ باز باشد و فردا هزینهٔ برنامه‌ریزی‌شده داشته باشی، یک اعلان نشان داده می‌شود. اعلان پس‌زمینه بدون سرور نیست.</p>
+      <Button
+        className="mt-4"
+        tone={on ? 'ghost' : 'gold'}
+        onClick={() => {
+          if (on) {
+            setNotificationsEnabled(false)
+            setOn(false)
+            setNote('یادآور خاموش شد.')
+            return
+          }
+          void requestNotificationPermission().then((result) => {
+            const granted = result === 'granted'
+            setOn(granted)
+            setNote(granted ? 'یادآور روشن شد.' : 'اجازه اعلان داده نشد.')
+          })
+        }}
+      >
+        {on ? 'خاموش کردن یادآور' : 'روشن کردن یادآور'}
+      </Button>
+      {note ? <p className="mt-2 text-sm text-mute">{note}</p> : null}
+    </section>
+  )
+}
+
+function LockSection() {
+  const [enabled, setEnabled] = useState(lockEnabled)
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [note, setNote] = useState('')
+
+  async function save() {
+    if (!pinLooksValid(next)) {
+      setNote('رمز باید ۴ تا ۸ رقم باشد.')
+      return
+    }
+    if (enabled && !(await checkPin(current))) {
+      setNote('رمز فعلی درست نیست.')
+      return
+    }
+    await savePin(next)
+    setEnabled(true)
+    setCurrent('')
+    setNext('')
+    setNote('قفل ذخیره شد. این قفل فقط صفحه را می‌پوشاند.')
+  }
+
+  async function remove() {
+    if (!(await checkPin(current))) {
+      setNote('رمز فعلی درست نیست.')
+      return
+    }
+    clearLock()
+    setEnabled(false)
+    setCurrent('')
+    setNext('')
+    setNote('قفل برداشته شد.')
+  }
+
+  return (
+    <section className="rounded-3xl border border-line bg-panel p-5">
+      <h2 className="font-bold">قفل رمز</h2>
+      <p className="mt-2 text-sm text-mute">با بستن این زبانه دوباره رمز پرسیده می‌شود. داده‌ها در همین مرورگر می‌مانند و رمزنگاری نمی‌شوند.</p>
+      <div className="mt-4 grid gap-2">
+        {enabled ? (
+          <input
+            className={`${fieldClass} text-center tracking-[0.3em]`}
+            dir="ltr"
+            inputMode="numeric"
+            autoComplete="off"
+            aria-label="رمز فعلی"
+            placeholder="رمز فعلی"
+            value={current}
+            maxLength={8}
+            onChange={(event) => setCurrent(event.target.value.replace(/\D/g, '').slice(0, 8))}
+          />
+        ) : null}
+        <input
+          className={`${fieldClass} text-center tracking-[0.3em]`}
+          dir="ltr"
+          inputMode="numeric"
+          autoComplete="off"
+          aria-label="رمز جدید"
+          placeholder="رمز جدید"
+          value={next}
+          maxLength={8}
+          onChange={(event) => setNext(event.target.value.replace(/\D/g, '').slice(0, 8))}
+        />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button onClick={() => void save()}>{enabled ? 'عوض کردن رمز' : 'گذاشتن رمز'}</Button>
+        {enabled ? (
+          <Button tone="ghost" onClick={() => void remove()}>
+            برداشتن قفل
+          </Button>
+        ) : null}
+      </div>
+      {note ? <p className="mt-2 text-sm text-mute">{note}</p> : null}
+    </section>
+  )
+}
+
+function InstallSection() {
+  const { canInstall, install } = useInstallPrompt()
+  return (
+    <section className="rounded-3xl border border-line bg-panel p-5">
+      <h2 className="font-bold">نصب اپ</h2>
+      <p className="mt-2 text-sm text-mute">Luna را می‌توانی مثل یک اپ نصب کنی و پوستهٔ آن بدون اینترنت باز شود. داده‌ها روی همین دستگاه می‌مانند.</p>
+      {canInstall ? (
+        <Button className="mt-4" onClick={() => void install()}>
+          نصب Luna
+        </Button>
+      ) : (
+        <p className="mt-3 text-sm text-mute">اگر مرورگر اجازه بدهد، دکمهٔ نصب همین‌جا می‌آید. در غیر این صورت از منوی مرورگر «نصب» را بزن.</p>
+      )}
+    </section>
   )
 }
