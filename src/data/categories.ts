@@ -36,10 +36,11 @@ export function categoryById(id: string, extra: CustomCategory[] = []) {
   return categories.find((category) => category.id === id) ?? extra.find((category) => category.id === id)
 }
 
-export function categoryInUse(id: string, state: Pick<FinanceState, 'transactions' | 'budgets' | 'recurring'>) {
+export function categoryInUse(id: string, state: Pick<FinanceState, 'transactions' | 'budgets' | 'recurring' | 'categoryRules'>) {
   return (
     state.transactions.some((tx) => tx.categoryId === id) ||
     state.budgets.some((budget) => budget.categoryId === id) ||
-    state.recurring.some((rule) => rule.categoryId === id)
+    state.recurring.some((rule) => rule.categoryId === id) ||
+    state.categoryRules.some((rule) => rule.categoryId === id)
   )
 }

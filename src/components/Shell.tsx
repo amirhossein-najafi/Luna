@@ -19,6 +19,7 @@ const extraLinks = [
   { to: '/accounts', label: 'حساب‌ها' },
   { to: '/reports', label: 'گزارش' },
   { to: '/goals', label: 'اهداف' },
+  { to: '/inbox', label: 'صندوق ورودی' },
   { to: '/plans', label: 'پرداخت‌های آینده' },
 ]
 

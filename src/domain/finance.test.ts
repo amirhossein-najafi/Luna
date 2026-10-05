@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { daysBeforeBudgetEnds } from './budget.ts'
 import { parseTransactionCsv } from './csv.ts'
+import { parseInbox, rememberCorrection } from './inbox.ts'
+import { detectSubscriptions } from './subscriptions.ts'
 import { cashFlow } from './flow.ts'
 import { healthScore } from './health.ts'
 import { realValue } from './inflation.ts'
@@ -13,7 +15,7 @@ import { safeToSpend } from './spend.ts'
 import { netWorth, quantityOf, unrealizedGain } from './wealth.ts'
 import { parseBackup, serializeBackup } from '../lib/backup.ts'
 import { totalOf } from '../lib/stats.ts'
-import { defaultAccount, type Account, type Goal, type Quote, type RecurringRule, type Transaction } from '../types.ts'
+import { defaultAccount, type Account, type CategoryRule, type Goal, type Quote, type RecurringRule, type Transaction } from '../types.ts'
 
 function rentRule(nextDate: string): RecurringRule {
   return {
@@ -67,6 +69,7 @@ describe('quotes and backup', () => {
     expect(file.apiKey).toBeUndefined()
     expect(file.version).toBe(2)
     expect(state.safetyBuffer).toBe(0)
+    expect(state.categoryRules).toEqual([])
 
     const broken = parseBackup(JSON.stringify({
       app: 'luna',
@@ -329,5 +332,88 @@ describe('import, inflation and health', () => {
     const flow = cashFlow(rows)
     expect(flow?.nodes.map((node) => node.name)).toEqual(['حقوق', 'جریان ماه', 'خوراک', 'پس‌انداز'])
     expect(flow?.links.reduce((sum, link) => sum + link.value, 0)).toBe(200)
+  })
+})
+
+describe('inbox and subscriptions', () => {
+  const today = '1405-07-13'
+
+  it('converts a rial SMS to toman, tags Snapp as transit, and keeps the Jalali date', () => {
+    const text = ['برداشت ۳٬۲۵۰٬۰۰۰ ریال', 'کارت ۶۰۳۷', 'اسنپ', '۱۴۰۵/۰۷/۱۲', '', 'پرداخت ۱۲٬۰۰۰ تومان', 'نان', '1405-07-02'].join('\n')
+    const card: Account = { id: 'card', name: 'ملت 6037', kind: 'card', openingBalance: 0, archived: false }
+    const drafts = parseInbox(text, { accounts: [defaultAccount(), card], categories: [], rules: [], today })
+    expect(drafts[0]).toMatchObject({
+      amount: 325_000,
+      type: 'expense',
+      categoryId: 'transit',
+      date: '1405-07-12',
+      accountId: 'card',
+    })
+    expect(drafts[0].note).toContain('اسنپ')
+    expect(drafts[1]).toMatchObject({ amount: 12_000, type: 'expense', categoryId: 'other-out', date: '1405-07-02', accountId: defaultAccount().id })
+  })
+
+  it('uses the same CSV parser when the paste has a valid row', () => {
+    const csv = 'تاریخ,مبلغ,نوع,دسته,حساب,توضیح\n1405-07-02,80000,هزینه,خوراک,کیف پول,چای\n'
+    const accounts = [defaultAccount()]
+    const drafts = parseInbox(csv, { accounts, categories: [], rules: [], today })
+    const parsed = parseTransactionCsv(csv, { accounts, categories: [] })
+    expect(parsed.accepted).toHaveLength(1)
+    expect(drafts[0]).toMatchObject({
+      amount: parsed.accepted[0].amount,
+      categoryId: parsed.accepted[0].categoryId,
+      note: parsed.accepted[0].note,
+      date: parsed.accepted[0].date,
+    })
+    expect(drafts[0].categoryId).toBe('food')
+    expect(drafts[0].amount).toBe(80_000)
+  })
+
+  it('learns a snapp rule from a category correction and applies it next time', () => {
+    const text = 'برداشت 100000 تومان\nSnapp\n1405/07/12'
+    const input = { accounts: [defaultAccount()], categories: [], rules: [] as CategoryRule[], today }
+    const [first] = parseInbox(text, input)
+    expect(first.categoryId).toBe('transit')
+    const rules = rememberCorrection([], { merchant: first.merchant, categoryId: 'food' })
+    expect(rules[0].pattern).toBe('snapp')
+    const [second] = parseInbox(text, { ...input, rules })
+    expect(second.categoryId).toBe('food')
+
+    const restored = parseBackup(JSON.stringify({ app: 'luna', version: 2, categoryRules: rules }))
+    expect(restored.categoryRules[0]).toMatchObject({ pattern: 'snapp', categoryId: 'food' })
+    const legacy = parseBackup(JSON.stringify({ app: 'luna', version: 2, transactions: [] }))
+    expect(legacy.categoryRules).toEqual([])
+  })
+
+  it('suggests a monthly rule from three similar expenses and drops an outlier', () => {
+    const rows = [
+      tx({ id: '1', type: 'expense', amount: 700_000, date: '1405-05-01', note: 'اینترنت', categoryId: 'bills' }),
+      tx({ id: '2', type: 'expense', amount: 750_000, date: '1405-06-01', note: 'اینترنت', categoryId: 'bills' }),
+      tx({ id: '3', type: 'expense', amount: 800_000, date: '1405-07-01', note: 'اینترنت', categoryId: 'bills' }),
+      tx({ id: '4', type: 'expense', amount: 2_000_000, date: '1405-07-20', note: 'اینترنت', categoryId: 'bills' }),
+    ]
+    const [hint] = detectSubscriptions(rows, [])
+    expect(hint).toMatchObject({
+      title: 'اینترنت',
+      amount: 750_000,
+      frequency: 'monthly',
+      accountId: 'cash-wallet',
+      categoryId: 'bills',
+      nextDate: '1405-08-01',
+    })
+    expect(
+      detectSubscriptions(rows, [
+        {
+          id: 'net',
+          title: 'اینترنت',
+          amount: 750_000,
+          type: 'expense',
+          categoryId: 'bills',
+          accountId: 'cash-wallet',
+          frequency: 'monthly',
+          nextDate: '1405-08-01',
+        },
+      ]),
+    ).toEqual([])
   })
 })

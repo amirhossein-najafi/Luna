@@ -1,4 +1,5 @@
 import { categories, categoryById } from '../data/categories.ts'
+import { normalizeMerchant } from '../domain/inbox.ts'
 import { parseJalaliDate, todayJalali } from './jalali.ts'
 import {
   ACCOUNT_KINDS,
@@ -21,6 +22,7 @@ import {
   type RecurringOverrideAction,
   type RecurringRule,
   type Transaction,
+  type CategoryRule,
   type CustomCategory,
 } from '../types.ts'
 
@@ -37,10 +39,11 @@ export function emptyState(): FinanceState {
     accounts: [defaultAccount()],
     recurring: [],
     goals: [],
-  categories: [],
-  inflationRate: 35,
-  safetyBuffer: 0,
-}
+    categories: [],
+    categoryRules: [],
+    inflationRate: 35,
+    safetyBuffer: 0,
+  }
 }
 
 function isKind(value: unknown): value is HoldingKind {
@@ -314,6 +317,27 @@ function cleanRecurring(value: unknown, accountIds: Set<string>, extra: CustomCa
   return rules
 }
 
+function cleanCategoryRules(value: unknown, accountIds: Set<string>, extra: CustomCategory[]): CategoryRule[] {
+  if (!Array.isArray(value)) return []
+  const rules: CategoryRule[] = []
+  const seen = new Set<string>()
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const rule = item as Partial<CategoryRule>
+    if (typeof rule.id !== 'string' || !rule.id) continue
+    if (typeof rule.pattern !== 'string') continue
+    const pattern = normalizeMerchant(rule.pattern)
+    if (!pattern || seen.has(pattern)) continue
+    if (typeof rule.categoryId !== 'string' || !categoryById(rule.categoryId, extra)) continue
+    const accountId = typeof rule.accountId === 'string' && accountIds.has(rule.accountId) ? rule.accountId : undefined
+    seen.add(pattern)
+    const next: CategoryRule = { id: rule.id, pattern, categoryId: rule.categoryId }
+    if (accountId) next.accountId = accountId
+    rules.push(next)
+  }
+  return rules.slice(0, 200)
+}
+
 function cleanGoals(value: unknown, accountIds: Set<string>): Goal[] {
   if (!Array.isArray(value)) return []
   const goals: Goal[] = []
@@ -369,6 +393,7 @@ export function normalizeState(value: unknown): FinanceState {
     recurring: cleanRecurring(source.recurring, accountIds, customCategories),
     goals: cleanGoals(source.goals, accountIds),
     categories: customCategories,
+    categoryRules: cleanCategoryRules(source.categoryRules, accountIds, customCategories),
     inflationRate,
     safetyBuffer:
       typeof source.safetyBuffer === 'number' && Number.isFinite(source.safetyBuffer) ? Math.max(0, Math.round(source.safetyBuffer)) : 0,

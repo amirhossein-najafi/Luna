@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { JalaliDateField } from '../components/JalaliDateField.tsx'
+import { SubscriptionHints } from '../components/SubscriptionHints.tsx'
 import { Button, PageHeader, fieldClass } from '../components/ui.tsx'
 import { categoriesFor } from '../data/categories.ts'
 import { projectCashflow, type TimelineEntry } from '../domain/forecast.ts'
@@ -115,6 +116,8 @@ export function PlansPage() {
           }}
         />
       ) : null}
+
+      <SubscriptionHints />
     </div>
   )
 }

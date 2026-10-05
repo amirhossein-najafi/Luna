@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react'
+import { rememberCorrection } from '../domain/inbox.ts'
 import { editOccurrence, payOccurrence, postponeOccurrence, skipOccurrence, type OccurrencePatch } from '../domain/recurring.ts'
 import { mergeQuotes } from '../domain/quotes.ts'
 import { categories, categoryInUse } from '../data/categories.ts'
@@ -28,6 +29,7 @@ type Action =
   | { type: 'postponeOccurrence'; ruleId: string; occurrenceDate: string; date: string }
   | { type: 'editOccurrence'; ruleId: string; occurrenceDate: string; patch: OccurrencePatch }
   | { type: 'safetyBuffer'; amount: number }
+  | { type: 'categoryRule'; merchant: string; categoryId: string; accountId?: string }
   | { type: 'category'; category: CustomCategory }
   | { type: 'deleteCategory'; id: string }
   | { type: 'inflation'; rate: number }
@@ -61,6 +63,7 @@ type FinanceContextValue = {
   postponeOccurrence: (ruleId: string, occurrenceDate: string, date: string) => void
   editOccurrence: (ruleId: string, occurrenceDate: string, patch: OccurrencePatch) => void
   setSafetyBuffer: (amount: number) => void
+  saveCategoryRule: (rule: { merchant: string; categoryId: string; accountId?: string }) => void
   saveCategory: (category: CustomCategory) => void
   deleteCategory: (id: string) => void
   setInflationRate: (rate: number) => void
@@ -179,6 +182,15 @@ function reducer(state: FinanceState, action: Action): FinanceState {
     }
     case 'safetyBuffer':
       return { ...state, safetyBuffer: Math.max(0, Math.round(action.amount)) }
+    case 'categoryRule':
+      return {
+        ...state,
+        categoryRules: rememberCorrection(state.categoryRules, {
+          merchant: action.merchant,
+          categoryId: action.categoryId,
+          accountId: action.accountId,
+        }),
+      }
     case 'category': {
       const category = withId(action.category)
       const name = category.name.trim().slice(0, 24)
@@ -251,6 +263,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       postponeOccurrence: (ruleId, occurrenceDate, date) => dispatch({ type: 'postponeOccurrence', ruleId, occurrenceDate, date }),
       editOccurrence: (ruleId, occurrenceDate, patch) => dispatch({ type: 'editOccurrence', ruleId, occurrenceDate, patch }),
       setSafetyBuffer: (amount) => dispatch({ type: 'safetyBuffer', amount }),
+      saveCategoryRule: (rule) => dispatch({ type: 'categoryRule', ...rule }),
       saveCategory: (category) => dispatch({ type: 'category', category }),
       deleteCategory: (id) => dispatch({ type: 'deleteCategory', id }),
       setInflationRate: (rate) => dispatch({ type: 'inflation', rate }),

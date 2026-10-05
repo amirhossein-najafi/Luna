@@ -99,6 +99,13 @@ export type CustomCategory = {
   tone: string
 }
 
+export type CategoryRule = {
+  id: string
+  pattern: string
+  categoryId: string
+  accountId?: string
+}
+
 export type FinanceState = {
   transactions: Transaction[]
   budgets: Budget[]
@@ -110,6 +117,7 @@ export type FinanceState = {
   recurring: RecurringRule[]
   goals: Goal[]
   categories: CustomCategory[]
+  categoryRules: CategoryRule[]
   inflationRate: number
   safetyBuffer: number
 }
