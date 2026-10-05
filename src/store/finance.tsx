@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useState, type ReactNode } from 'react'
 import { rollRecurring } from '../domain/recurring.ts'
 import { mergeQuotes } from '../domain/quotes.ts'
+import { categories, categoryInUse } from '../data/categories.ts'
 import { emptyState, loadState, saveState } from '../lib/backup.ts'
 import { currentMonth, shiftMonth, todayJalali } from '../lib/jalali.ts'
-import type { Account, AssetLot, Budget, FinanceState, Goal, MonthBudget, Quote, RecurringRule, Transaction } from '../types.ts'
+import type { Account, AssetLot, Budget, CustomCategory, FinanceState, Goal, MonthBudget, Quote, RecurringRule, Transaction } from '../types.ts'
 
 type Action =
   | { type: 'add'; tx: Transaction }
@@ -23,6 +24,10 @@ type Action =
   | { type: 'recurring'; rule: RecurringRule }
   | { type: 'deleteRecurring'; id: string }
   | { type: 'rolled'; transactions: Transaction[]; recurring: RecurringRule[] }
+  | { type: 'category'; category: CustomCategory }
+  | { type: 'deleteCategory'; id: string }
+  | { type: 'inflation'; rate: number }
+  | { type: 'import'; transactions: Transaction[] }
   | { type: 'replace'; state: FinanceState }
   | { type: 'reset' }
 
@@ -47,6 +52,10 @@ type FinanceContextValue = {
   deleteGoal: (id: string) => void
   saveRecurring: (rule: RecurringRule) => void
   deleteRecurring: (id: string) => void
+  saveCategory: (category: CustomCategory) => void
+  deleteCategory: (id: string) => void
+  setInflationRate: (rate: number) => void
+  importTransactions: (rows: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>[]) => void
   replaceAll: (state: FinanceState) => void
   reset: () => void
 }
@@ -137,6 +146,36 @@ function reducer(state: FinanceState, action: Action): FinanceState {
     }
     case 'deleteRecurring':
       return { ...state, recurring: state.recurring.filter((rule) => rule.id !== action.id) }
+    case 'category': {
+      const category = withId(action.category)
+      const name = category.name.trim().slice(0, 24)
+      if (!name) return state
+      const taken =
+        state.categories.some((item) => item.id !== category.id && item.type === category.type && item.name === name) ||
+        categories.some((item) => item.type === category.type && item.name === name)
+      if (taken) return state
+      const next = { ...category, name }
+      const exists = state.categories.some((item) => item.id === next.id)
+      return {
+        ...state,
+        categories: exists ? state.categories.map((item) => (item.id === next.id ? next : item)) : [...state.categories, next],
+      }
+    }
+    case 'deleteCategory':
+      if (categoryInUse(action.id, state)) return state
+      return { ...state, categories: state.categories.filter((category) => category.id !== action.id) }
+    case 'inflation':
+      return { ...state, inflationRate: Math.min(200, Math.max(0, Math.round(action.rate))) }
+    case 'import': {
+      const now = new Date().toISOString()
+      const rows = action.transactions.map((tx) => ({
+        ...tx,
+        id: tx.id || crypto.randomUUID(),
+        createdAt: now,
+        updatedAt: now,
+      }))
+      return { ...state, transactions: [...rows, ...state.transactions] }
+    }
     case 'rolled':
       return { ...state, transactions: action.transactions, recurring: action.recurring }
     case 'replace':
@@ -182,6 +221,14 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       deleteGoal: (id) => dispatch({ type: 'deleteGoal', id }),
       saveRecurring: (rule) => dispatch({ type: 'recurring', rule }),
       deleteRecurring: (id) => dispatch({ type: 'deleteRecurring', id }),
+      saveCategory: (category) => dispatch({ type: 'category', category }),
+      deleteCategory: (id) => dispatch({ type: 'deleteCategory', id }),
+      setInflationRate: (rate) => dispatch({ type: 'inflation', rate }),
+      importTransactions: (rows) =>
+        dispatch({
+          type: 'import',
+          transactions: rows.map((tx) => ({ ...tx, id: '', createdAt: '', updatedAt: '' })),
+        }),
       replaceAll: (next) => dispatch({ type: 'replace', state: next }),
       reset: () => dispatch({ type: 'reset' }),
     }),

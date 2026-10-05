@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { categoriesFor } from '../data/categories.ts'
 import { parseJalaliDate } from '../lib/jalali.ts'
 import { formatNumber, parseAmount } from '../lib/money.ts'
-import { ACCOUNT_META, type Account, type Transaction, type TransactionType } from '../types.ts'
+import { ACCOUNT_META, type Account, type CustomCategory, type Transaction, type TransactionType } from '../types.ts'
 import { JalaliDateField } from './JalaliDateField.tsx'
 import { Button, fieldClass } from './ui.tsx'
 
@@ -16,12 +16,14 @@ export function TransactionForm({
   initial,
   defaultDate,
   accounts,
+  categories: extra = [],
   onSave,
   onClose,
 }: {
   initial?: Transaction
   defaultDate: string
   accounts: Account[]
+  categories?: CustomCategory[]
   onSave: (tx: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => void
   onClose: () => void
 }) {
@@ -29,20 +31,20 @@ export function TransactionForm({
   const [type, setType] = useState<TransactionType>(initial?.type ?? 'expense')
   const [amount, setAmount] = useState(initial ? String(initial.amount) : '')
   const [categoryId, setCategoryId] = useState(
-    initial?.categoryId || categoriesFor('expense')[0].id,
+    initial?.categoryId || categoriesFor('expense', extra)[0].id,
   )
   const [accountId, setAccountId] = useState(initial?.accountId || openAccounts[0]?.id || '')
   const [toAccountId, setToAccountId] = useState(initial?.toAccountId || openAccounts.find((account) => account.id !== accountId)?.id || '')
   const [date, setDate] = useState(initial?.date ?? defaultDate)
   const [note, setNote] = useState(initial?.note ?? '')
   const [error, setError] = useState('')
-  const options = type === 'transfer' ? [] : categoriesFor(type)
+  const options = type === 'transfer' ? [] : categoriesFor(type, extra)
   const preview = parseAmount(amount)
 
   function changeType(next: TransactionType) {
     setType(next)
     if (next === 'transfer') return
-    const nextOptions = categoriesFor(next)
+    const nextOptions = categoriesFor(next, extra)
     if (!nextOptions.some((category) => category.id === categoryId)) {
       setCategoryId(nextOptions[0].id)
     }

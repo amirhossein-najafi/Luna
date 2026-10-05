@@ -1,5 +1,5 @@
 import { categoryById, categoriesFor } from '../data/categories.ts'
-import type { Transaction, TransactionType } from '../types.ts'
+import type { CustomCategory, Transaction, TransactionType } from '../types.ts'
 import { daysInMonth, formatIsoDate, todayJalali } from './jalali.ts'
 import { latinDigits, toFaDigits } from './money.ts'
 
@@ -11,8 +11,8 @@ export function totalOf(transactions: Transaction[], type: TransactionType) {
   return transactions.filter((tx) => tx.type === type).reduce((sum, tx) => sum + tx.amount, 0)
 }
 
-export function expenseSlices(transactions: Transaction[]) {
-  return categoriesFor('expense')
+export function expenseSlices(transactions: Transaction[], extra: CustomCategory[] = []) {
+  return categoriesFor('expense', extra)
     .map((category) => ({
       id: category.id,
       name: category.name,
@@ -55,10 +55,10 @@ export function spentInCategory(transactions: Transaction[], month: string, cate
   )
 }
 
-export function matchesQuery(tx: Transaction, query: string) {
+export function matchesQuery(tx: Transaction, query: string, extra: CustomCategory[] = []) {
   const needle = latinDigits(query).trim().toLowerCase()
   if (!needle) return true
-  const category = categoryById(tx.categoryId)?.name ?? ''
+  const category = categoryById(tx.categoryId, extra)?.name ?? ''
   const haystack = latinDigits(`${tx.note} ${category} ${tx.amount}`).toLowerCase()
   return haystack.includes(needle)
 }

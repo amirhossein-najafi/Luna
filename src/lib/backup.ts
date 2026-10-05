@@ -1,4 +1,4 @@
-import { categoryById } from '../data/categories.ts'
+import { categories, categoryById } from '../data/categories.ts'
 import { parseJalaliDate, todayJalali } from './jalali.ts'
 import {
   ACCOUNT_KINDS,
@@ -19,6 +19,7 @@ import {
   type RecurringFrequency,
   type RecurringRule,
   type Transaction,
+  type CustomCategory,
 } from '../types.ts'
 
 const STORAGE_KEY = 'luna-v1'
@@ -34,6 +35,8 @@ export function emptyState(): FinanceState {
     accounts: [defaultAccount()],
     recurring: [],
     goals: [],
+    categories: [],
+    inflationRate: 35,
   }
 }
 
@@ -83,7 +86,30 @@ function cleanAccounts(value: unknown): Account[] {
   return accounts
 }
 
-function cleanTransaction(value: unknown, accountIds: Set<string>, fallbackId: string): Transaction | null {
+function cleanCategories(value: unknown): CustomCategory[] {
+  if (!Array.isArray(value)) return []
+  const items: CustomCategory[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const category = item as Partial<CustomCategory>
+    if (typeof category.id !== 'string' || !category.id) continue
+    if (categories.some((builtIn) => builtIn.id === category.id)) continue
+    if (typeof category.name !== 'string' || !category.name.trim()) continue
+    if (!isFlow(category.type)) continue
+    const name = category.name.trim().slice(0, 24)
+    if (items.some((current) => current.type === category.type && current.name === name)) continue
+    if (categories.some((builtIn) => builtIn.type === category.type && builtIn.name === name)) continue
+    items.push({
+      id: category.id,
+      name,
+      type: category.type,
+      tone: typeof category.tone === 'string' && /^#[0-9a-fA-F]{6}$/.test(category.tone) ? category.tone : '#8d938c',
+    })
+  }
+  return items
+}
+
+function cleanTransaction(value: unknown, accountIds: Set<string>, fallbackId: string, extra: CustomCategory[]): Transaction | null {
   if (!value || typeof value !== 'object') return null
   const tx = value as Partial<Transaction> & { updatedAt?: string }
   if (typeof tx.id !== 'string' || !tx.id) return null
@@ -117,7 +143,7 @@ function cleanTransaction(value: unknown, accountIds: Set<string>, fallbackId: s
   }
 
   if (typeof tx.categoryId !== 'string') return null
-  const category = categoryById(tx.categoryId)
+  const category = categoryById(tx.categoryId, extra)
   if (!category || category.type !== tx.type) return null
   return {
     id: tx.id,
@@ -133,11 +159,11 @@ function cleanTransaction(value: unknown, accountIds: Set<string>, fallbackId: s
   }
 }
 
-function cleanBudget(value: unknown): Budget | null {
+function cleanBudget(value: unknown, extra: CustomCategory[]): Budget | null {
   if (!value || typeof value !== 'object') return null
   const budget = value as Partial<Budget>
   if (typeof budget.categoryId !== 'string' || !budget.categoryId) return null
-  if (!categoryById(budget.categoryId) || categoryById(budget.categoryId)?.type !== 'expense') return null
+  if (categoryById(budget.categoryId, extra)?.type !== 'expense') return null
   if (typeof budget.month !== 'string' || !/^\d{4}-\d{2}$/.test(budget.month)) return null
   if (typeof budget.limit !== 'number' || !Number.isFinite(budget.limit)) return null
   const limit = Math.round(budget.limit)
@@ -229,7 +255,7 @@ function cleanQuotes(value: unknown): Quote[] {
   return [...quotes.values()]
 }
 
-function cleanRecurring(value: unknown, accountIds: Set<string>): RecurringRule[] {
+function cleanRecurring(value: unknown, accountIds: Set<string>, extra: CustomCategory[]): RecurringRule[] {
   if (!Array.isArray(value)) return []
   const rules: RecurringRule[] = []
   for (const item of value) {
@@ -240,7 +266,7 @@ function cleanRecurring(value: unknown, accountIds: Set<string>): RecurringRule[
     if (!isFlow(rule.type)) continue
     if (typeof rule.amount !== 'number' || !Number.isFinite(rule.amount) || rule.amount <= 0) continue
     if (typeof rule.categoryId !== 'string') continue
-    const category = categoryById(rule.categoryId)
+    const category = categoryById(rule.categoryId, extra)
     if (!category || category.type !== rule.type) continue
     if (typeof rule.accountId !== 'string' || !accountIds.has(rule.accountId)) continue
     if (!isFrequency(rule.frequency)) continue
@@ -288,18 +314,23 @@ export function normalizeState(value: unknown): FinanceState {
   const accounts = cleanAccounts(source.accounts)
   const accountIds = new Set(accounts.map((account) => account.id))
   const fallbackId = accountIds.has(DEFAULT_ACCOUNT_ID) ? DEFAULT_ACCOUNT_ID : accounts[0].id
+  const customCategories = cleanCategories(source.categories)
   const transactions = Array.isArray(source.transactions)
     ? source.transactions.flatMap((item) => {
-        const tx = cleanTransaction(item, accountIds, fallbackId)
+        const tx = cleanTransaction(item, accountIds, fallbackId, customCategories)
         return tx ? [tx] : []
       })
     : []
   const budgets = Array.isArray(source.budgets)
     ? source.budgets.flatMap((item) => {
-        const budget = cleanBudget(item)
+        const budget = cleanBudget(item, customCategories)
         return budget ? [budget] : []
       })
     : []
+  const inflationRate =
+    typeof source.inflationRate === 'number' && Number.isFinite(source.inflationRate)
+      ? Math.min(200, Math.max(0, Math.round(source.inflationRate)))
+      : 35
   return {
     transactions,
     budgets,
@@ -308,8 +339,10 @@ export function normalizeState(value: unknown): FinanceState {
     quotes: cleanQuotes(source.quotes),
     apiKey: typeof source.apiKey === 'string' ? source.apiKey : '',
     accounts,
-    recurring: cleanRecurring(source.recurring, accountIds),
+    recurring: cleanRecurring(source.recurring, accountIds, customCategories),
     goals: cleanGoals(source.goals, accountIds),
+    categories: customCategories,
+    inflationRate,
   }
 }
 

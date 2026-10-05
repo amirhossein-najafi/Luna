@@ -80,6 +80,13 @@ export type Goal = {
   accountId?: string
 }
 
+export type CustomCategory = {
+  id: string
+  name: string
+  type: FlowType
+  tone: string
+}
+
 export type FinanceState = {
   transactions: Transaction[]
   budgets: Budget[]
@@ -90,6 +97,8 @@ export type FinanceState = {
   accounts: Account[]
   recurring: RecurringRule[]
   goals: Goal[]
+  categories: CustomCategory[]
+  inflationRate: number
 }
 
 export const HOLDING_META: Record<HoldingKind, { name: string; unit: string; priceLabel: string }> = {

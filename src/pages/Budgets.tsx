@@ -10,7 +10,7 @@ import { useFinance } from '../store/finance.tsx'
 
 export function BudgetsPage() {
   const { state, month, setBudget, setMonthBudget } = useFinance()
-  const categories = categoriesFor('expense')
+  const categories = categoriesFor('expense', state.categories)
   const monthLimit = state.monthBudgets.find((budget) => budget.month === month)?.limit ?? 0
   const monthSpent = totalOf(inMonth(state.transactions, month), 'expense')
 

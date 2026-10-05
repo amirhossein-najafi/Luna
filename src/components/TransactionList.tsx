@@ -2,16 +2,18 @@ import { useState } from 'react'
 import { categoryById } from '../data/categories.ts'
 import { formatDayLabel, weekdayLabel } from '../lib/jalali.ts'
 import { formatNumber } from '../lib/money.ts'
-import type { Account, Transaction } from '../types.ts'
+import type { Account, CustomCategory, Transaction } from '../types.ts'
 
 export function TransactionList({
   items,
   accounts = [],
+  categories = [],
   onEdit,
   onDelete,
 }: {
   items: Transaction[]
   accounts?: Account[]
+  categories?: CustomCategory[]
   onEdit?: (tx: Transaction) => void
   onDelete?: (id: string) => void
 }) {
@@ -37,7 +39,7 @@ export function TransactionList({
           </h3>
           <ul className="divide-y divide-line rounded-3xl border border-line bg-panel px-4">
             {group.items.map((tx) => {
-              const category = categoryById(tx.categoryId)
+              const category = categoryById(tx.categoryId, categories)
               const income = tx.type === 'income'
               const transfer = tx.type === 'transfer'
               const title = transfer ? 'انتقال' : (category?.name ?? 'نامشخص')

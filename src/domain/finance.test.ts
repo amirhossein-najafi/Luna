@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { daysBeforeBudgetEnds } from './budget.ts'
+import { parseTransactionCsv } from './csv.ts'
+import { cashFlow } from './flow.ts'
+import { healthScore } from './health.ts'
+import { realValue } from './inflation.ts'
 import { monthInsights, savingsRate } from './insights.ts'
 import { accountBalance, cashPosition } from './ledger.ts'
 import { mergeQuotes } from './quotes.ts'
@@ -135,5 +139,53 @@ describe('insights, wealth, recurring, budget', () => {
     ]
     const lines = monthInsights(rows, '1405-07', '1405-07-10')
     expect(lines[0]).toContain('کمتر')
+  })
+})
+
+describe('import, inflation and health', () => {
+  it('reads a csv row and skips an unknown category', () => {
+    const text = 'تاریخ,مبلغ,نوع,دسته,حساب,توضیح\n1405-07-02,80000,هزینه,خوراک,کیف پول,چای\n1405-07-03,1000,هزینه,ناشناخته,کیف پول,\n'
+    const parsed = parseTransactionCsv(text, { accounts: [defaultAccount()], categories: [] })
+    expect(parsed.accepted).toEqual([
+      expect.objectContaining({ type: 'expense', amount: 80000, categoryId: 'food', accountId: 'cash-wallet', date: '1405-07-02' }),
+    ])
+    expect(parsed.skipped[0]).toContain('ناشناخته')
+  })
+
+  it('keeps a custom category through backup and drops an unknown one', () => {
+    const state = parseBackup(JSON.stringify({
+      app: 'luna',
+      categories: [{ id: 'custom-coffee', name: 'قهوه', type: 'expense', tone: '#112233' }],
+      transactions: [
+        { id: 'c', type: 'expense', amount: 10, categoryId: 'custom-coffee', date: '1405-07-01', note: '' },
+        { id: 'bad', type: 'expense', amount: 10, categoryId: 'missing', date: '1405-07-01', note: '' },
+      ],
+    }))
+    expect(state.categories).toEqual([expect.objectContaining({ id: 'custom-coffee', name: 'قهوه' })])
+    expect(state.transactions.map((item) => item.id)).toEqual(['c'])
+    expect(state.inflationRate).toBe(35)
+  })
+
+  it('brings a year-old amount to today at the annual rate', () => {
+    expect(realValue(100, 12, 20)).toBe(120)
+    expect(realValue(100, 0, 20)).toBe(100)
+  })
+
+  it('scores a calm month higher than an overspent indebted one', () => {
+    const calm = healthScore({ income: 100, expense: 70, monthLimit: 80, categoryBudgets: [], liquid: 500, debt: 0 })
+    const strained = healthScore({ income: 100, expense: 180, monthLimit: 80, categoryBudgets: [], liquid: 0, debt: 400 })
+    expect(calm.score).toBeGreaterThan(strained.score)
+    expect(calm.title).toBe('آرام')
+    expect(strained.parts.find((part) => part.id === 'debt')?.score).toBeLessThan(50)
+  })
+
+  it('sends income through the month and out to spending and savings', () => {
+    const rows = [
+      tx({ id: 'in', type: 'income', amount: 100, date: '1405-07-01', categoryId: 'salary' }),
+      tx({ id: 'out', type: 'expense', amount: 40, date: '1405-07-02', categoryId: 'food' }),
+    ]
+    const flow = cashFlow(rows)
+    expect(flow?.nodes.map((node) => node.name)).toEqual(['حقوق', 'جریان ماه', 'خوراک', 'پس‌انداز'])
+    expect(flow?.links.reduce((sum, link) => sum + link.value, 0)).toBe(200)
   })
 })

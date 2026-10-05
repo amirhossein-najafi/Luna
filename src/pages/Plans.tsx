@@ -5,7 +5,7 @@ import { categoriesFor } from '../data/categories.ts'
 import { JalaliDateField } from '../components/JalaliDateField.tsx'
 import { formatDayLabel, todayJalali } from '../lib/jalali.ts'
 import { formatNumber, parseAmount } from '../lib/money.ts'
-import type { FlowType, RecurringFrequency, RecurringRule } from '../types.ts'
+import type { CustomCategory, FlowType, RecurringFrequency, RecurringRule } from '../types.ts'
 import { useFinance } from '../store/finance.tsx'
 
 export function PlansPage() {
@@ -39,6 +39,7 @@ export function PlansPage() {
       {creating ? (
         <RuleForm
           accounts={state.accounts.filter((account) => !account.archived)}
+          categories={state.categories}
           onClose={() => setCreating(false)}
           onSave={(rule) => {
             saveRecurring(rule)
@@ -52,22 +53,24 @@ export function PlansPage() {
 
 function RuleForm({
   accounts,
+  categories,
   onSave,
   onClose,
 }: {
   accounts: { id: string; name: string }[]
+  categories: CustomCategory[]
   onSave: (rule: RecurringRule) => void
   onClose: () => void
 }) {
   const [title, setTitle] = useState('')
   const [amount, setAmount] = useState('')
   const [type, setType] = useState<FlowType>('expense')
-  const [categoryId, setCategoryId] = useState(categoriesFor('expense')[0].id)
+  const [categoryId, setCategoryId] = useState(categoriesFor('expense', categories)[0].id)
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? '')
   const [frequency, setFrequency] = useState<RecurringFrequency>('monthly')
   const [nextDate, setNextDate] = useState(todayJalali())
   const [error, setError] = useState('')
-  const options = categoriesFor(type)
+  const options = categoriesFor(type, categories)
 
   function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -108,7 +111,7 @@ function RuleForm({
             onChange={(event) => {
               const next = event.target.value as FlowType
               setType(next)
-              setCategoryId(categoriesFor(next)[0].id)
+              setCategoryId(categoriesFor(next, categories)[0].id)
             }}
           >
             <option value="expense">هزینه</option>

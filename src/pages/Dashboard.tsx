@@ -5,13 +5,14 @@ import { MonthSwitcher } from '../components/MonthSwitcher.tsx'
 import { NetWorthChart } from '../components/NetWorthChart.tsx'
 import { TransactionList } from '../components/TransactionList.tsx'
 import { PageHeader } from '../components/ui.tsx'
+import { healthScore } from '../domain/health.ts'
 import { cashPosition } from '../domain/ledger.ts'
 import { monthInsights, savingsRate } from '../domain/insights.ts'
 import { remainingCommitments, upcomingRules } from '../domain/recurring.ts'
 import { netWorth } from '../domain/wealth.ts'
 import { formatDayLabel, formatMonthLabel, todayJalali } from '../lib/jalali.ts'
 import { formatNumber } from '../lib/money.ts'
-import { expenseSlices, inMonth, recentDaySeries, totalOf } from '../lib/stats.ts'
+import { expenseSlices, inMonth, recentDaySeries, spentInCategory, totalOf } from '../lib/stats.ts'
 import { useFinance } from '../store/finance.tsx'
 
 export function DashboardPage() {
@@ -22,12 +23,23 @@ export function DashboardPage() {
   const balance = income - expense
   const rate = savingsRate(income, expense)
   const today = todayJalali()
-  const insights = monthInsights(state.transactions, month, today)
-  const liquid = cashPosition(state.accounts, state.transactions).liquid
+  const insights = monthInsights(state.transactions, month, today, state.categories)
+  const position = cashPosition(state.accounts, state.transactions)
+  const liquid = position.liquid
+  const health = healthScore({
+    income,
+    expense,
+    monthLimit: state.monthBudgets.find((budget) => budget.month === month)?.limit ?? 0,
+    categoryBudgets: state.budgets
+      .filter((budget) => budget.month === month)
+      .map((budget) => ({ spent: spentInCategory(state.transactions, month, budget.categoryId), limit: budget.limit })),
+    liquid,
+    debt: position.debt,
+  })
   const worth = netWorth(state.accounts, state.transactions, state.lots, state.quotes)
   const commitments = remainingCommitments(state.recurring, month, today)
   const upcoming = upcomingRules(state.recurring, today).slice(0, 3)
-  const slices = expenseSlices(rows)
+  const slices = expenseSlices(rows, state.categories)
   const days = recentDaySeries(rows, month)
   const top = slices.reduce<(typeof slices)[number] | null>((best, slice) => {
     if (!best || slice.value > best.value) return slice
@@ -38,6 +50,42 @@ export function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader eyebrow="خلاصه ماه" title="داشبورد" action={<MonthSwitcher />} />
+
+      <article className="rounded-3xl border border-line bg-panel p-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="max-w-xl">
+            <p className="text-sm text-mute">سلامت مالی این ماه</p>
+            <h2 className="mt-1 text-2xl font-bold">{health.title}</h2>
+            <p className="mt-2 text-sm leading-6 text-mute">{health.summary}</p>
+          </div>
+          <p className="text-4xl font-bold text-gold">
+            {formatNumber(health.score)}
+            <span className="ms-2 text-base font-medium text-mute">از ۱۰۰</span>
+          </p>
+        </div>
+        <ul className="mt-5 grid gap-3 lg:grid-cols-3">
+          {health.parts.map((part) => (
+            <li key={part.id} className="rounded-2xl bg-raise p-4">
+              <p className="text-sm text-mute">{part.label}</p>
+              <p className="mt-1 text-sm text-mute">{formatNumber(part.weight)}٪ از نمرهٔ کل</p>
+              <p className="mt-3 text-2xl font-bold">
+                {formatNumber(part.score)}
+                <span className="ms-1 text-sm font-medium text-mute">از ۱۰۰</span>
+              </p>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-ink">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${part.score}%`,
+                    background: !part.measured ? 'var(--mute)' : part.score >= 80 ? 'var(--in)' : part.score >= 50 ? 'var(--gold)' : 'var(--out)',
+                  }}
+                />
+              </div>
+              <p className="mt-3 text-sm leading-6">{part.note}</p>
+            </li>
+          ))}
+        </ul>
+      </article>
 
       {insights.length > 0 ? (
         <ul className="flex flex-col gap-2 rounded-3xl border border-line bg-panel px-5 py-4 text-sm">
@@ -147,7 +195,7 @@ export function DashboardPage() {
                 همه
               </Link>
             </div>
-            <TransactionList items={latest} accounts={state.accounts} />
+            <TransactionList items={latest} accounts={state.accounts} categories={state.categories} />
           </section>
         </>
       )}

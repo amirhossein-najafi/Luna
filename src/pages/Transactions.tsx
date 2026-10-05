@@ -20,16 +20,17 @@ export function TransactionsPage() {
   const [categoryId, setCategoryId] = useState('all')
   const creating = params.get('new') === '1' && !editing
 
-  const categoryOptions = type === 'income' || type === 'expense' ? categoriesFor(type) : type === 'all' ? categories : []
+  const categoryOptions =
+    type === 'income' || type === 'expense' ? categoriesFor(type, state.categories) : type === 'all' ? [...categories, ...state.categories] : []
   const defaultDate = month === currentMonth() ? todayJalali() : formatIsoDate(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 1)
 
   const visible = useMemo(() => {
     return inMonth(state.transactions, month).filter((tx) => {
       if (type !== 'all' && tx.type !== type) return false
       if (categoryId !== 'all' && tx.categoryId !== categoryId) return false
-      return matchesQuery(tx, query)
+      return matchesQuery(tx, query, state.categories)
     })
-  }, [state.transactions, month, type, categoryId, query])
+  }, [state.transactions, month, type, categoryId, query, state.categories])
 
   function closeForm() {
     setEditing(null)
@@ -49,7 +50,7 @@ export function TransactionsPage() {
       setCategoryId('all')
       return
     }
-    if (categoryId !== 'all' && next !== 'all' && !categoriesFor(next).some((category) => category.id === categoryId)) {
+    if (categoryId !== 'all' && next !== 'all' && !categoriesFor(next, state.categories).some((category) => category.id === categoryId)) {
       setCategoryId('all')
     }
   }
@@ -128,6 +129,7 @@ export function TransactionsPage() {
         <TransactionList
           items={visible}
           accounts={state.accounts}
+          categories={state.categories}
           onEdit={setEditing}
           onDelete={(id) => {
             deleteTransaction(id)
@@ -142,6 +144,7 @@ export function TransactionsPage() {
             initial={editing ?? undefined}
             defaultDate={defaultDate}
             accounts={state.accounts}
+            categories={state.categories}
             onClose={closeForm}
             onSave={(tx) => {
               if (editing) updateTransaction({ ...editing, ...tx, id: editing.id })
